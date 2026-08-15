@@ -1,0 +1,101 @@
+name: serialization-benchmark
+
+# Runs the serialization benchmark, puts its executive summary directly on the workflow
+# run page, and uploads the full results (CSV + interactive HTML + encoded samples).
+#
+# PR runs always use the `quick` preset. Their *size* and *losslessness* numbers are
+# deterministic and meaningful; the *timing* numbers are only indicative on a shared runner —
+# use workflow_dispatch (or a dedicated machine) when the exact timings matter.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: "Corpus size preset"
+        type: choice
+        options: [quick, full]
+        default: quick
+      repeat:
+        description: "Timed runs per measurement (median reported)"
+        default: "5"
+      compas_ref:
+        description: "compas version to benchmark: a PyPI specifier, or a git ref as 'git:<branch|tag|sha>'"
+        default: ""
+      compas_pb_ref:
+        description: "compas_pb version to benchmark: a PyPI specifier, or a git ref as 'git:<branch|tag|sha>'"
+        default: ""
+      formats:
+        description: "formats to benchmark (json, json_zip, compas_pb, compas_pb_zip, compas_pb_zstd, compas_msgpack, compas_msgpack_zstd)"
+        default: "json compas_pb"
+
+permissions:
+  contents: read
+
+# One run per ref; a new commit cancels the previous run for the same PR.
+concurrency:
+  group: serialization-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install benchmarks + subjects under test
+        env:
+          COMPAS_REF: ${{ inputs.compas_ref }}
+          COMPAS_PB_REF: ${{ inputs.compas_pb_ref }}
+        run: |
+          python -m pip install --upgrade pip
+          # Pulls compas from PyPI plus the optional formats (compas_pb, msgspec, zstandard).
+          pip install -e ".[formats]"
+
+          # Optionally override either subject under test. "git:<ref>" installs from GitHub
+          # (compas_pb commits its generated _pb2 modules, so no protoc is needed; both repos
+          # are public, so no auth is required); anything else is a plain PyPI specifier.
+          install_override () {
+            name="$1"; repo="$2"; ref="$3"
+            [ -z "$ref" ] && return 0
+            case "$ref" in
+              git:*) pip install "$name @ git+https://github.com/$repo.git@${ref#git:}" ;;
+              *) pip install "$name$ref" ;;
+            esac
+          }
+          install_override compas compas-dev/compas "$COMPAS_REF"
+          install_override compas_pb gramaziokohler/compas_pb "$COMPAS_PB_REF"
+
+      - name: Show versions
+        run: |
+          python -c "import compas, compas_pb, msgspec, zstandard; print('compas', compas.__version__); print('compas_pb', compas_pb.__version__)"
+
+      - name: Run benchmark (${{ inputs.preset || 'quick' }})
+        run: |
+          python -m compas_benchmarks.serialization.run \
+            --preset "${{ inputs.preset || 'quick' }}" \
+            --repeat "${{ inputs.repeat || '5' }}" \
+            --formats ${{ inputs.formats || 'json compas_pb' }} \
+            --out "${{ runner.temp }}/serialization-results/baseline_${{ inputs.preset || 'quick' }}.csv"
+
+      - name: Upload results
+        id: upload-results
+        uses: actions/upload-artifact@v4
+        with:
+          name: serialization-benchmark-${{ inputs.preset || 'quick' }}-${{ github.run_number }}
+          # Upload only this run's clean output, kept outside the working tree so local
+          # baselines in results/ can never leak into a CI artifact.
+          path: ${{ runner.temp }}/serialization-results/
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Publish benchmark summary
+        env:
+          ARTIFACT_URL: ${{ steps.upload-results.outputs.artifact-url }}
+          RESULTS_CSV: ${{ runner.temp }}/serialization-results/baseline_${{ inputs.preset || 'quick' }}.csv
+        run: python -m compas_benchmarks.serialization.report "$RESULTS_CSV" --artifact-url "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"

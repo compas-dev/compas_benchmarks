@@ -1,0 +1,103 @@
+[build-system]
+requires = ["setuptools>=66.0"]
+build-backend = "setuptools.build_meta"
+
+# ============================================================================
+# project info
+# ============================================================================
+
+[project]
+name = "compas_benchmarks"
+description = "Benchmarks for the COMPAS core ecosystem."
+keywords = ["architecture", "engineering", "fabrication", "construction", "benchmark"]
+authors = [{ name = "Gonzalo Casas", email = "casas@arch.ethz.ch" }]
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.9"
+dynamic = ['version']
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Topic :: Scientific/Engineering",
+    "Operating System :: Unix",
+    "Operating System :: POSIX",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+# `inheritance`-aware dtype resolution (used by the msgpack format) landed in compas 2.12.
+dependencies = ["compas>=2.12"]
+
+[project.optional-dependencies]
+# Optional serialization formats. Every format registers as unavailable and is skipped
+# when its dependency is missing, so the benchmark still runs without these.
+formats = ["compas_pb>=1.1.4", "msgspec", "zstandard"]
+dev = ["pytest", "ruff"]
+
+[project.urls]
+Repository = "https://github.com/compas-dev/compas_benchmarks.git"
+Issues = "https://github.com/compas-dev/compas_benchmarks/issues"
+
+# ============================================================================
+# setuptools config
+# ============================================================================
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+zip-safe = false
+
+[tool.setuptools.dynamic]
+version = { attr = "compas_benchmarks.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ============================================================================
+# pytest
+# ============================================================================
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+testpaths = ["tests", "src/compas_benchmarks"]
+python_files = ["test_*.py", "*_test.py", "test.py"]
+addopts = ["-ra", "--strict-markers", "--tb=short"]
+doctest_optionflags = [
+    "NORMALIZE_WHITESPACE",
+    "IGNORE_EXCEPTION_DETAIL",
+    "ALLOW_UNICODE",
+    "ALLOW_BYTES",
+    "NUMBER",
+]
+
+# ============================================================================
+# style — ruff only, for both linting and formatting
+# ============================================================================
+
+[tool.ruff]
+line-length = 179
+indent-width = 4
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["I001"]
+"tests/*" = ["I001"]
+
+[tool.ruff.lint.isort]
+force-single-line = true
+known-first-party = ["compas_benchmarks"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 179
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
