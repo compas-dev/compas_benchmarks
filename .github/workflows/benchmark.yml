@@ -49,7 +49,7 @@ jobs:
       # by the next `uv run` re-syncing back to uv.lock.
       UV_NO_SYNC: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v10.0.1
         with:
@@ -104,7 +104,7 @@ jobs:
       # Always downloadable (the only way to see a PR run's report, since PRs do not publish).
       - name: Upload results
         id: upload-results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: serialization-benchmark-${{ inputs.preset || 'quick' }}-${{ github.run_number }}
           path: ${{ runner.temp }}/site/

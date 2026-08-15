@@ -13,7 +13,7 @@ keywords = ["architecture", "engineering", "fabrication", "construction", "bench
 authors = [{ name = "Gonzalo Casas", email = "casas@arch.ethz.ch" }]
 license = { file = "LICENSE" }
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 version = "0.1.0"
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -23,10 +23,10 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 # `inheritance`-aware dtype resolution (used by the msgpack format) landed in compas 2.12.
 dependencies = ["compas>=2.12"]
@@ -82,7 +82,7 @@ doctest_optionflags = [
 [tool.ruff]
 line-length = 179
 indent-width = 4
-target-version = "py39"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
