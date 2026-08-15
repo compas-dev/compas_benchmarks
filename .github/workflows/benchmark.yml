@@ -54,7 +54,7 @@ jobs:
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           enable-cache: true
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install benchmarks + subjects under test
         env:
