@@ -15,28 +15,41 @@ public API (such as a format-independent content hash) is implemented here.
 
 ## Install
 
-```bash
-pip install -e ".[formats,dev]"
-```
-
-`formats` pulls in the optional binary formats (`compas_pb`, `msgspec`, `zstandard`). Without
-it the benchmarks still run, skipping any format whose dependency is missing.
-
-To measure a specific version of a subject under test, install it over the top:
+The project is managed with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-pip install "compas @ git+https://github.com/compas-dev/compas.git@main"
-pip install "compas_pb @ git+https://github.com/gramaziokohler/compas_pb.git@main"
+uv sync --all-extras
 ```
+
+`--all-extras` adds the optional binary formats (`compas_pb`, `msgspec`, `zstandard`); a plain
+`uv sync` gives you COMPAS, JSON, and the tooling, and any format whose dependency is missing
+is skipped rather than failing the run. `uv.lock` pins the exact versions every measurement
+was taken against — CI syncs with `--locked`, so a run's numbers always name a known
+environment.
+
+To measure a specific version of a subject under test, install it over the synced
+environment:
+
+```bash
+uv pip install "compas @ git+https://github.com/compas-dev/compas.git@main"
+uv pip install "compas_pb @ git+https://github.com/gramaziokohler/compas_pb.git@main"
+```
+
+Then use `uv run --no-sync` for the commands below, so the next `uv run` does not restore the
+locked versions underneath you.
 
 ## Run
 
 ```bash
 # Quick baseline — writes results/baseline_quick.{csv,html} + results/samples/
-python -m compas_benchmarks.serialization.run
+uv run python -m compas_benchmarks.serialization.run
 
 # Full corpus (large; slow and memory-hungry)
-python -m compas_benchmarks.serialization.run --preset full --out results/baseline_full.csv
+uv run python -m compas_benchmarks.serialization.run --preset full --out results/baseline_full.csv
+
+# Tests and style
+uv run pytest
+uv run ruff check . && uv run ruff format .
 ```
 
 Run from the repository root: results land in `results/`, relative to the working directory.
@@ -67,13 +80,13 @@ available as workflow artifacts.
 Build the same site locally with:
 
 ```bash
-python -m compas_benchmarks.site results --out site
+uv run python -m compas_benchmarks.site results --out site
 ```
 
 ## Adding a benchmark suite
 
 Add a subpackage under `src/compas_benchmarks/`, runnable as
-`python -m compas_benchmarks.<suite>.run`, with its notes in `docs/<suite>.md`.
+`uv run python -m compas_benchmarks.<suite>.run`, with its notes in `docs/<suite>.md`.
 
 ## License
 

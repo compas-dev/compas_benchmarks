@@ -45,11 +45,15 @@ jobs:
     env:
       PRESET: ${{ inputs.preset || 'quick' }}
       RESULTS_DIR: ${{ github.workspace }}/results
+      # The environment is synced once, below; a version override would otherwise be undone
+      # by the next `uv run` re-syncing back to uv.lock.
+      UV_NO_SYNC: "1"
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
+          enable-cache: true
           python-version: "3.11"
 
       - name: Install benchmarks + subjects under test
@@ -57,9 +61,9 @@ jobs:
           COMPAS_REF: ${{ inputs.compas_ref }}
           COMPAS_PB_REF: ${{ inputs.compas_pb_ref }}
         run: |
-          python -m pip install --upgrade pip
-          # Pulls compas from PyPI plus the optional formats (compas_pb, msgspec, zstandard).
-          pip install -e ".[formats]"
+          # The locked environment: compas plus the optional formats (compas_pb, msgspec,
+          # zstandard). This is the version pair a plain run benchmarks.
+          uv sync --all-extras --locked
 
           # Optionally override either subject under test. "git:<ref>" installs from GitHub
           # (compas_pb commits its generated _pb2 modules, so no protoc is needed; both repos
@@ -68,8 +72,8 @@ jobs:
             name="$1"; repo="$2"; ref="$3"
             [ -z "$ref" ] && return 0
             case "$ref" in
-              git:*) pip install "$name @ git+https://github.com/$repo.git@${ref#git:}" ;;
-              *) pip install "$name$ref" ;;
+              git:*) uv pip install "$name @ git+https://github.com/$repo.git@${ref#git:}" ;;
+              *) uv pip install "$name$ref" ;;
             esac
           }
           install_override compas compas-dev/compas "$COMPAS_REF"
@@ -77,11 +81,11 @@ jobs:
 
       - name: Show versions
         run: |
-          python -c "import compas, compas_pb, msgspec, zstandard; print('compas', compas.__version__); print('compas_pb', compas_pb.__version__)"
+          uv run python -c "import compas, compas_pb, msgspec, zstandard; print('compas', compas.__version__); print('compas_pb', compas_pb.__version__)"
 
       - name: Run benchmark (${{ inputs.preset || 'quick' }})
         run: |
-          python -m compas_benchmarks.serialization.run \
+          uv run python -m compas_benchmarks.serialization.run \
             --preset "$PRESET" \
             --repeat "${{ inputs.repeat || '5' }}" \
             --formats ${{ inputs.formats || 'json compas_pb' }} \
@@ -92,7 +96,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
-          python -m compas_benchmarks.site "$RESULTS_DIR" \
+          uv run python -m compas_benchmarks.site "$RESULTS_DIR" \
             --out "${{ runner.temp }}/site" \
             --run-url "$RUN_URL" \
             --source-url "$SOURCE_URL"

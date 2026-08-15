@@ -84,21 +84,21 @@ fixtures encoded with the three main formats, so you can see the *shape* of each
 `<subject>.json`, `<subject>.pb` + `<subject>.pb.json` (the protobuf bytes rendered back to
 JSON, showing the flat/columnar wire structure), and `<subject>.msgpack` +
 `<subject>.msgpack.json` (the row-oriented tree). Regenerate standalone with
-`python -m compas_benchmarks.serialization.samples`; skip during a run with `--no-samples`.
+`uv run python -m compas_benchmarks.serialization.samples`; skip during a run with `--no-samples`.
 
 ```bash
 # Quick baseline (small sizes, fast) — writes results/baseline_quick.{csv,html} + samples/
-python -m compas_benchmarks.serialization.run
+uv run python -m compas_benchmarks.serialization.run
 
 # Full PRD corpus (large; slow, memory-hungry)
-python -m compas_benchmarks.serialization.run --preset full --out results/baseline_full.csv
+uv run python -m compas_benchmarks.serialization.run --preset full --out results/baseline_full.csv
 
 # Subset
-python -m compas_benchmarks.serialization.run --subjects mesh pointcloud --formats json
+uv run python -m compas_benchmarks.serialization.run --subjects mesh pointcloud --formats json
 ```
 
 Run from the repository root — results are written to `results/` relative to the working
-directory. Install the package first (`pip install -e ".[formats]"`); this pulls in a working
+directory. Sync the environment first (`uv sync --all-extras`); this pulls in a working
 `numpy` (COMPAS geometry imports it at load time) along with the optional binary formats.
 
 ### On CI
@@ -110,7 +110,7 @@ and publishes the whole fresh run directory (index + HTML report + CSV + encoded
 flattened into a Markdown job summary. Pull requests do not publish (the site keeps showing
 `main`); they upload the identical site as a downloadable artifact, linked from the run
 summary. The page is assembled by [`site.py`](../src/compas_benchmarks/site.py), which also
-runs locally: `python -m compas_benchmarks.site results --out site`.
+runs locally: `uv run python -m compas_benchmarks.site results --out site`.
 
 Inputs (**Actions → serialization-benchmark → Run workflow**) let you pick the `preset`, the
 `repeat` count, the `formats`, and the versions of the subjects under test: `compas_ref` and
@@ -205,7 +205,7 @@ To inspect the actual encodings, see `results/samples/` (per subject: `.json`, `
 The optimizations were developed on the `benchmark/double-precision` branch of the external
 `compas_pb` repo and released in **compas_pb 1.1.4**, which is what the `formats` extra
 installs. To benchmark unreleased work, install that repo's branch over it
-(`pip install "compas_pb @ git+https://github.com/gramaziokohler/compas_pb.git@<ref>"`, or
+(`uv pip install "compas_pb @ git+https://github.com/gramaziokohler/compas_pb.git@<ref>"`, or
 pass `compas_pb_ref: git:<ref>` on CI).
 
 ### N1 — binary-vs-JSON scaling (`--preset full`)
