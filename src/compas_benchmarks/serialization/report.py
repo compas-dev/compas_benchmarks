@@ -264,8 +264,7 @@ def _legend(rows, colors):
         seen.append(r["format"])
         slot = _slot(colors, r["format"])
         parts.append(
-            '<span class="chip" data-format="{fmt}"><span class="dot" style="background:var(--series-{slot})"></span>'
-            "<b>{fmt}</b> · {note}</span>".format(
+            '<span class="chip" data-format="{fmt}"><span class="dot" style="background:var(--series-{slot})"></span><b>{fmt}</b> · {note}</span>'.format(
                 slot=slot, fmt=html.escape(r["format"]), note=html.escape(r.get("note", ""))
             )
         )
@@ -301,11 +300,7 @@ def _bars(subject_rows, colors, metric_key, kind):
                     val=_fmt_value(r[metric_key], kind),
                 )
             )
-        blocks.append(
-            '<div class="sizegroup"><div class="sizelabel">{lbl} elements</div>{rows}</div>'.format(
-                lbl=_fmt_int(size), rows="".join(rows_html)
-            )
-        )
+        blocks.append('<div class="sizegroup"><div class="sizelabel">{lbl} elements</div>{rows}</div>'.format(lbl=_fmt_int(size), rows="".join(rows_html)))
     return "".join(blocks)
 
 
@@ -355,9 +350,7 @@ def _coverage_banner(coverage):
         tail = ' <span class="miss">not yet covered: {}</span>'.format(html.escape(", ".join(missing)))
     else:
         tail = " — full coverage."
-    return '<div class="coverage"><b>{}/{}</b> of compas_pb\'s serializable types are benchmarked.{}</div>'.format(
-        n, total, tail
-    )
+    return '<div class="coverage"><b>{}/{}</b> of compas_pb\'s serializable types are benchmarked.{}</div>'.format(n, total, tail)
 
 
 def build_html(rows, meta=None):
@@ -421,10 +414,9 @@ def build_html(rows, meta=None):
         for r in rows
     ]
     slot_map = {r["format"]: _slot(colors, r["format"]) for r in rows}
-    script = (
-        '<script id="rows-data" type="application/json">{data}</script>'
-        "<script>{js}</script>"
-    ).format(data=json.dumps(data_rows), js=_FILTER_JS.replace("__SLOTS__", json.dumps(slot_map)))
+    script = ('<script id="rows-data" type="application/json">{data}</script><script>{js}</script>').format(
+        data=json.dumps(data_rows), js=_FILTER_JS.replace("__SLOTS__", json.dumps(slot_map))
+    )
 
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'>"

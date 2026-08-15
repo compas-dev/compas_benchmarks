@@ -241,10 +241,34 @@ def make_primitives(kind, count, seed=DEFAULT_SEED):
 
 
 _PRIMITIVE_KINDS = [
-    "point", "vector", "line", "frame", "plane", "box", "sphere", "circle",
-    "polyline", "polygon", "bezier", "polyhedron", "transformation",
-    "arc", "ellipse", "parabola", "hyperbola", "cylinder", "cone", "capsule", "torus",
-    "quaternion", "translation", "rotation", "scale", "shear", "reflection", "projection",
+    "point",
+    "vector",
+    "line",
+    "frame",
+    "plane",
+    "box",
+    "sphere",
+    "circle",
+    "polyline",
+    "polygon",
+    "bezier",
+    "polyhedron",
+    "transformation",
+    "arc",
+    "ellipse",
+    "parabola",
+    "hyperbola",
+    "cylinder",
+    "cone",
+    "capsule",
+    "torus",
+    "quaternion",
+    "translation",
+    "rotation",
+    "scale",
+    "shear",
+    "reflection",
+    "projection",
 ]
 
 

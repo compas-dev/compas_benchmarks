@@ -27,7 +27,9 @@ jobs:
           pip install -e ".[formats,dev]"
 
       - name: Lint
-        run: ruff check .
+        run: |
+          ruff check .
+          ruff format --check .
 
       - name: Test
         run: pytest

@@ -56,6 +56,7 @@ def formats():
 # JSON baselines (phase 1)
 # ---------------------------------------------------------------------------
 
+
 def _json_compact_dumps(obj):
     return compas.json_dumps(obj, compact=True).encode("utf-8")
 

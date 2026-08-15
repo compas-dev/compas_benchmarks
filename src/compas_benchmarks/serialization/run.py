@@ -61,6 +61,7 @@ PRESETS = {
 def _sizes_for(preset, subject):
     return PRESETS[preset].get(subject, DEFAULT_SIZES[preset])
 
+
 CSV_COLUMNS = [
     "subject",
     "size",
@@ -171,9 +172,7 @@ def run(subjects, preset, format_names, repeat, seed):
 
 
 def print_table(rows):
-    header = "{:<12} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>8}".format(
-        "subject", "size", "format", "size", "dump_s", "load_s", "trip_s", "peak", "lossless"
-    )
+    header = "{:<12} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>8}".format("subject", "size", "format", "size", "dump_s", "load_s", "trip_s", "peak", "lossless")
     print(header)
     print("-" * len(header))
     for r in rows:
