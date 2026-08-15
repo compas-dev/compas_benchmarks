@@ -101,6 +101,11 @@ Run from the repository root — results are written to `results/` relative to t
 directory. Sync the environment first (`uv sync --all-extras`); this pulls in a working
 `numpy` (COMPAS geometry imports it at load time) along with the optional binary formats.
 
+Each batch is reported on stderr as it completes (subject, size, then each format's wire size
+and round-trip time), so a long run is never silent; the results table goes to stdout, and
+`--quiet` suppresses the progress. The reporting happens strictly between measurements — the
+timed regions live inside `metrics.measure` — so it cannot perturb the timings.
+
 ### On CI
 
 The `serialization-benchmark` GitHub Actions workflow

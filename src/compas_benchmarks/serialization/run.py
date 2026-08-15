@@ -22,6 +22,8 @@ Subset::
 import argparse
 import csv
 import os
+import sys
+import time
 
 import compas
 
@@ -101,6 +103,24 @@ def _human_bytes(n):
         n /= 1024.0
 
 
+def _human_time(seconds):
+    if seconds < 1:
+        return "{:.0f}ms".format(seconds * 1000)
+    if seconds < 60:
+        return "{:.1f}s".format(seconds)
+    return "{:.0f}m{:02.0f}s".format(seconds // 60, seconds % 60)
+
+
+def _progress(enabled, message):
+    """Report progress on stderr, where it cannot be mistaken for part of the results table.
+
+    Every call happens between measurements, never inside one: the timed regions live in
+    :func:`metrics.measure`, so no I/O of this function is ever inside a stopwatch.
+    """
+    if enabled:
+        print(message, file=sys.stderr, flush=True)
+
+
 def _coverage():
     """How many of compas_pb's native serializable types the corpus exercises.
 
@@ -125,49 +145,82 @@ def _coverage():
     }
 
 
-def run(subjects, preset, format_names, repeat, seed):
+def run(subjects, preset, format_names, repeat, seed, progress=True):
+    """Measure every format against every subject at every size of the preset.
+
+    Parameters
+    ----------
+    progress : bool, optional
+        Report each batch on stderr as it completes. A full run takes minutes with nothing
+        else to show for it, so this is on by default; the results themselves go to stdout.
+
+    Returns
+    -------
+    list[dict]
+    """
     active_formats = [f for f in formats.formats() if f.available and (not format_names or f.name in format_names)]
     if not active_formats:
         raise SystemExit("No matching available formats.")
 
+    batches = [(subject, size) for subject in subjects for size in _sizes_for(preset, subject)]
+    _progress(
+        progress,
+        "Benchmarking {} formats over {} batches ({} timed runs each): {}".format(len(active_formats), len(batches), repeat, ", ".join(f.name for f in active_formats)),
+    )
+    started = time.perf_counter()
     rows = []
 
-    for subject in subjects:
+    for index, (subject, size) in enumerate(batches, start=1):
         factory = fixtures.SUBJECTS[subject]
-        for size in _sizes_for(preset, subject):
-            # Build a fresh fixture per format: serializing accesses .guid on some paths (JSON
-            # forces it), which would mutate a shared object and unfairly change what a later
-            # format encodes. A pristine object per format keeps each measurement independent.
-            measured = {f.name: metrics.measure(f, factory(size, seed), repeat=repeat) for f in active_formats}
-            json_size = measured.get("json", {}).get("size_bytes")
+        _progress(progress, "[{}/{}] {} @ {:,}".format(index, len(batches), subject, size))
 
-            for fmt in active_formats:
-                m = measured[fmt.name]
-                ratio = (json_size / m["size_bytes"]) if json_size else float("nan")
-                roundtrip = m["dump_median_s"] + m["load_median_s"]
-                rows.append(
-                    {
-                        "subject": subject,
-                        "size": size,
-                        "format": fmt.name,
-                        "size_bytes": m["size_bytes"],
-                        "compression_vs_json": round(ratio, 3),
-                        "dump_median_s": round(m["dump_median_s"], 6),
-                        "dump_stdev_s": round(m["dump_stdev_s"], 6),
-                        "load_median_s": round(m["load_median_s"], 6),
-                        "load_stdev_s": round(m["load_stdev_s"], 6),
-                        "roundtrip_median_s": round(roundtrip, 6),
-                        "dump_mb_s": _mb_per_s(m["size_bytes"], m["dump_median_s"]),
-                        "load_mb_s": _mb_per_s(m["size_bytes"], m["load_median_s"]),
-                        "peak_mem_bytes": m["peak_mem_bytes"],
-                        "lossless": m["lossless"],
-                        "data_equal": m["data_equal"],
-                        "canonical_hash_equal": m["canonical_hash_equal"],
-                        "max_abs_error": m["max_abs_error"],
-                        "rms_error": m["rms_error"],
-                        "note": fmt.note,
-                    }
-                )
+        # Build a fresh fixture per format: serializing accesses .guid on some paths (JSON
+        # forces it), which would mutate a shared object and unfairly change what a later
+        # format encodes. A pristine object per format keeps each measurement independent.
+        measured = {}
+        for fmt in active_formats:
+            measured[fmt.name] = metrics.measure(fmt, factory(size, seed), repeat=repeat)
+            # Printed after the measurement returns, so it cannot land inside a timed region.
+            _progress(
+                progress,
+                "         {:<22} {:>9} {:>8} {}".format(
+                    fmt.name,
+                    _human_bytes(measured[fmt.name]["size_bytes"]),
+                    _human_time(measured[fmt.name]["dump_median_s"] + measured[fmt.name]["load_median_s"]),
+                    "" if measured[fmt.name]["lossless"] else "lossy",
+                ).rstrip(),
+            )
+        json_size = measured.get("json", {}).get("size_bytes")
+
+        for fmt in active_formats:
+            m = measured[fmt.name]
+            ratio = (json_size / m["size_bytes"]) if json_size else float("nan")
+            roundtrip = m["dump_median_s"] + m["load_median_s"]
+            rows.append(
+                {
+                    "subject": subject,
+                    "size": size,
+                    "format": fmt.name,
+                    "size_bytes": m["size_bytes"],
+                    "compression_vs_json": round(ratio, 3),
+                    "dump_median_s": round(m["dump_median_s"], 6),
+                    "dump_stdev_s": round(m["dump_stdev_s"], 6),
+                    "load_median_s": round(m["load_median_s"], 6),
+                    "load_stdev_s": round(m["load_stdev_s"], 6),
+                    "roundtrip_median_s": round(roundtrip, 6),
+                    "dump_mb_s": _mb_per_s(m["size_bytes"], m["dump_median_s"]),
+                    "load_mb_s": _mb_per_s(m["size_bytes"], m["load_median_s"]),
+                    "peak_mem_bytes": m["peak_mem_bytes"],
+                    "lossless": m["lossless"],
+                    "data_equal": m["data_equal"],
+                    "canonical_hash_equal": m["canonical_hash_equal"],
+                    "max_abs_error": m["max_abs_error"],
+                    "rms_error": m["rms_error"],
+                    "note": fmt.note,
+                }
+            )
+
+    _progress(progress, "Done: {} rows in {}\n".format(len(rows), _human_time(time.perf_counter() - started)))
     return rows
 
 
@@ -210,9 +263,10 @@ def main():
     parser.add_argument("--seed", type=int, default=fixtures.DEFAULT_SEED)
     parser.add_argument("--out", default=os.path.join(RESULTS_DIR, "baseline_quick.csv"), help="CSV output path.")
     parser.add_argument("--no-samples", action="store_true", help="Skip writing encoded-format samples.")
+    parser.add_argument("--quiet", action="store_true", help="Suppress the per-batch progress reported on stderr.")
     args = parser.parse_args()
 
-    rows = run(args.subjects, args.preset, args.formats, args.repeat, args.seed)
+    rows = run(args.subjects, args.preset, args.formats, args.repeat, args.seed, progress=not args.quiet)
     print_table(rows)
     out = write_csv(rows, args.out)
     meta = {"preset": args.preset, "repeat": args.repeat, "seed": args.seed, "compas": compas.__version__}

@@ -3,9 +3,13 @@
 Benchmarks for the [COMPAS](https://github.com/compas-dev/compas) core ecosystem.
 
 This repository has one job: produce reproducible numbers about COMPAS, so design decisions
-in the core libraries are made on measurements rather than on argument. It depends on
-released COMPAS packages and never modifies them — anything a benchmark needs beyond the
-public API (such as a format-independent content hash) is implemented here.
+in the core libraries are made on measurements rather than on argument. It measures COMPAS
+from the outside and never modifies it — anything a benchmark needs beyond the public API
+(such as a format-independent content hash) is implemented here.
+
+What it measures is up to you: `uv.lock` pins released versions so runs are comparable by
+default, and any branch, tag, or commit can be installed over the top — locally or on CI —
+when the point is to measure unreleased work.
 
 ## Suites
 
@@ -27,16 +31,30 @@ is skipped rather than failing the run. `uv.lock` pins the exact versions every 
 was taken against — CI syncs with `--locked`, so a run's numbers always name a known
 environment.
 
-To measure a specific version of a subject under test, install it over the synced
-environment:
+### Benchmarking a branch
+
+Any branch, tag, or commit of a subject under test can be installed over the synced
+environment — measuring unreleased work is the normal case, not an exception:
 
 ```bash
-uv pip install "compas @ git+https://github.com/compas-dev/compas.git@main"
-uv pip install "compas_pb @ git+https://github.com/gramaziokohler/compas_pb.git@main"
+uv pip install "compas @ git+https://github.com/compas-dev/compas.git@some-branch"
+uv pip install "compas_pb @ git+https://github.com/gramaziokohler/compas_pb.git@some-branch"
+
+# ... and for an unpushed local checkout:
+uv pip install /path/to/compas
 ```
 
-Then use `uv run --no-sync` for the commands below, so the next `uv run` does not restore the
-locked versions underneath you.
+Two things to know about the override. First, **use `uv run --no-sync` afterwards** (or export
+`UV_NO_SYNC=1`): a plain `uv run` re-syncs to `uv.lock` and would silently restore the
+released version, leaving you benchmarking something other than what you asked for. Second,
+`uv pip install` targets `$VIRTUAL_ENV` when one is active, unlike `uv sync` and `uv run`,
+which always find this project's `.venv` — so deactivate any unrelated environment first, or
+you will install into it by mistake.
+
+`uv sync --all-extras --locked` puts everything back to the locked versions.
+
+On CI, the same thing is a workflow input: `compas_ref` / `compas_pb_ref` accept a PyPI
+specifier (`==2.15.1`) or a git ref (`git:some-branch`).
 
 ## Run
 
@@ -55,6 +73,21 @@ uv run ruff check . && uv run ruff format .
 Run from the repository root: results land in `results/`, relative to the working directory.
 Every run writes a CSV (the machine record) and a self-contained HTML report next to it (the
 human one). `results/` is git-ignored — benchmark output is reproduced, not committed.
+
+A run reports each batch on **stderr** as it completes, so a long run shows its progress:
+
+```
+Benchmarking 3 formats over 4 batches (2 timed runs each): json, compas_pb, compas_pb_zstd
+[2/4] mesh @ 10,000
+         json                     864.1KB     34ms
+         compas_pb                320.3KB     27ms
+         compas_pb_zstd           168.6KB     29ms
+```
+
+Progress goes to stderr and the results table to stdout, so redirecting the table keeps the
+progress on screen. Every line is printed between measurements, never inside one — the timed
+regions are confined to `metrics.measure` — so this cannot influence the numbers. `--quiet`
+turns it off.
 
 See [`docs/serialization.md`](docs/serialization.md) for the corpus, the formats under test,
 and the findings so far.
