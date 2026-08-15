@@ -105,10 +105,14 @@ directory. Install the package first (`pip install -e ".[formats]"`); this pulls
 
 The `serialization-benchmark` GitHub Actions workflow
 ([`.github/workflows/benchmark.yml`](../.github/workflows/benchmark.yml)) runs the benchmark
-on demand (**Actions → serialization-benchmark → Run workflow**) and uploads the whole
-fresh run directory (CSV + HTML report + samples) as a downloadable artifact. The workflow
-run summary shows the largest-size results and a prominent link to the full artifact, so the
-main conclusions are visible without opening the ZIP. Inputs let you pick the `preset`, the
+and publishes the whole fresh run directory (index + HTML report + CSV + encoded samples) to
+**GitHub Pages** — the report is interactive, so it is published as a page rather than
+flattened into a Markdown job summary. Pull requests do not publish (the site keeps showing
+`main`); they upload the identical site as a downloadable artifact, linked from the run
+summary. The page is assembled by [`site.py`](../src/compas_benchmarks/site.py), which also
+runs locally: `python -m compas_benchmarks.site results --out site`.
+
+Inputs (**Actions → serialization-benchmark → Run workflow**) let you pick the `preset`, the
 `repeat` count, the `formats`, and the versions of the subjects under test: `compas_ref` and
 `compas_pb_ref` each take either a PyPI specifier (`==2.15.1`) or a git ref (`git:main`,
 `git:some-branch`) — compas_pb commits its generated `_pb2` modules, so no protoc is needed.

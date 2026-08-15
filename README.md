@@ -49,11 +49,26 @@ and the findings so far.
 ## On CI
 
 The [`serialization-benchmark`](.github/workflows/benchmark.yml) workflow runs the `quick`
-preset on every push to `main` and every pull request, publishes an executive summary to the
-run page, and uploads the full results as an artifact. Use **Actions → serialization-benchmark
-→ Run workflow** to choose the preset, repeat count, formats, and the `compas` / `compas_pb`
-versions to benchmark. Treat CI *timings* as indicative only — size and losslessness numbers
-are deterministic, timings on a shared runner are not.
+preset on every push to `main` and every pull request. The output is an interactive HTML
+report, so it is **published to GitHub Pages** rather than transcribed into a job summary:
+pushes to `main` and manual runs deploy the site (index + report + CSV + encoded samples),
+while pull requests upload the same site as a downloadable artifact and leave the published
+site showing `main`.
+
+Use **Actions → serialization-benchmark → Run workflow** to choose the preset, repeat count,
+formats, and the `compas` / `compas_pb` versions to benchmark. Treat CI *timings* as
+indicative only — size and losslessness numbers are deterministic, timings on a shared runner
+are not.
+
+Publishing needs Pages enabled once, in **Settings → Pages → Build and deployment → Source:
+GitHub Actions**. Each deploy replaces the site with that run's results; earlier runs stay
+available as workflow artifacts.
+
+Build the same site locally with:
+
+```bash
+python -m compas_benchmarks.site results --out site
+```
 
 ## Adding a benchmark suite
 

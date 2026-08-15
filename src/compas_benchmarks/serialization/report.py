@@ -435,6 +435,11 @@ def build_html(rows, meta=None):
     )
 
 
+def stylesheet():
+    """The report's stylesheet, so pages published alongside a report can match it."""
+    return _css({})
+
+
 def write_html(rows, out_path, meta=None):
     with open(out_path, "w") as f:
         f.write(build_html(rows, meta))
@@ -463,8 +468,26 @@ def _markdown_cell(value):
     return str(value).replace("|", "\\|").replace("\n", " ")
 
 
-def build_markdown_summary(rows, artifact_url=None):
-    """Return the largest-size executive summary as GitHub-flavored Markdown."""
+def summarize(rows):
+    """Reduce result rows to the executive summary, at the largest measured size per subject.
+
+    The same numbers back the Markdown job summary and the published site's index, so both
+    tell the identical story.
+
+    Parameters
+    ----------
+    rows : list[dict]
+        Result rows, as read back from a benchmark CSV or produced by
+        :func:`compas_benchmarks.serialization.run.run`.
+
+    Returns
+    -------
+    dict
+        ``baseline`` (format every ratio is taken against), ``compared`` (subjects with both
+        a baseline and a protobuf variant), ``smallest_wins`` / ``fastest_wins`` (of those,
+        how many a ``compas_pb`` variant wins), ``size_ratio`` / ``time_ratio`` (median
+        protobuf-vs-baseline ratios, or None), and one entry per subject.
+    """
     subjects = []
     for row in rows:
         if row["subject"] not in subjects:
@@ -488,7 +511,7 @@ def build_markdown_summary(rows, artifact_url=None):
     smallest_wins = 0
     fastest_wins = 0
     compared = 0
-    table_rows = []
+    entries = []
     for subject, largest_size, group in groups:
         smallest = min(group, key=lambda row: float(row["size_bytes"]))
         fastest = min(group, key=lambda row: float(row["roundtrip_median_s"]))
@@ -509,53 +532,99 @@ def build_markdown_summary(rows, artifact_url=None):
             smallest_wins += smallest["format"].startswith("compas_pb")
             fastest_wins += fastest["format"].startswith("compas_pb")
 
-        if protobuf_rows:
-            protobuf_lossless = "✅ yes" if all(_is_lossless(row["lossless"]) for row in protobuf_rows) else "❌ no"
-        else:
-            protobuf_lossless = "—"
-
-        table_rows.append(
-            "| {} | {} | `{}` · {} | {} | `{}` · {} | {} | {} |".format(
-                _markdown_cell(subject),
-                _fmt_int(largest_size),
-                _markdown_cell(smallest["format"]),
-                _fmt_bytes(smallest["size_bytes"]),
-                size_comparison,
-                _markdown_cell(fastest["format"]),
-                _fmt_time(fastest["roundtrip_median_s"]),
-                time_comparison,
-                protobuf_lossless,
-            )
+        entries.append(
+            {
+                "subject": subject,
+                "size": largest_size,
+                "smallest_format": smallest["format"],
+                "smallest_bytes": float(smallest["size_bytes"]),
+                "size_comparison": size_comparison,
+                "fastest_format": fastest["format"],
+                "fastest_roundtrip_s": float(fastest["roundtrip_median_s"]),
+                "time_comparison": time_comparison,
+                "protobuf_lossless": all(_is_lossless(row["lossless"]) for row in protobuf_rows) if protobuf_rows else None,
+            }
         )
+
+    return {
+        "baseline": baseline_name,
+        "compared": compared,
+        "smallest_wins": smallest_wins,
+        "fastest_wins": fastest_wins,
+        "size_ratio": statistics.median(size_ratios) if size_ratios else None,
+        "time_ratio": statistics.median(time_ratios) if time_ratios else None,
+        "subjects": entries,
+    }
+
+
+def headline(summary, code=("", ""), emphasis=("", "")):
+    """One sentence stating how the best protobuf variant compares with the baseline.
+
+    Parameters
+    ----------
+    summary : dict
+        As returned by :func:`summarize`.
+    code : tuple[str, str], optional
+        Delimiters wrapping format names, e.g. ``("`", "`")`` for Markdown.
+    emphasis : tuple[str, str], optional
+        Delimiters wrapping the headline figures, e.g. ``("**", "**")`` for Markdown.
+
+    Returns
+    -------
+    str
+        Empty if no subject had both a baseline and a protobuf variant to compare.
+    """
+    if not summary["compared"]:
+        return ""
+
+    def mark(text, delimiters):
+        return "{}{}{}".format(delimiters[0], text, delimiters[1])
+
+    return (
+        "At the largest measured size for each subject, relative to {baseline}, the best {pb} variant is typically "
+        "{size} in wire size and {time} in round-trip time. "
+        "A {pb} variant is smallest for {sw} subjects and fastest for {fw}."
+    ).format(
+        baseline=mark(summary["baseline"], code),
+        pb=mark("compas_pb", code),
+        size=mark(_comparison(1.0, 1.0 / summary["size_ratio"], "size"), emphasis),
+        time=mark(_comparison(1.0, 1.0 / summary["time_ratio"], "time"), emphasis),
+        sw=mark("{}/{}".format(summary["smallest_wins"], summary["compared"]), emphasis),
+        fw=mark("{}/{}".format(summary["fastest_wins"], summary["compared"]), emphasis),
+    )
+
+
+def build_markdown_summary(rows, artifact_url=None):
+    """Return the largest-size executive summary as GitHub-flavored Markdown."""
+    summary = summarize(rows)
 
     lines = ["## Serialization benchmark", ""]
     if artifact_url:
         lines.extend(["[Download the full interactive HTML report, CSV, and encoded samples]({})".format(artifact_url), ""])
-    if compared:
-        lines.extend(
-            [
-                "At the largest measured size for each subject, relative to `{}`, the best `compas_pb` variant is typically **{}** in wire size and **{}** in round-trip time. "
-                "A `compas_pb` variant is smallest for **{}/{}** subjects and fastest for **{}/{}**.".format(
-                    baseline_name,
-                    _comparison(1.0, 1.0 / statistics.median(size_ratios), "size"),
-                    _comparison(1.0, 1.0 / statistics.median(time_ratios), "time"),
-                    smallest_wins,
-                    compared,
-                    fastest_wins,
-                    compared,
-                ),
-                "",
-            ]
-        )
+    if summary["compared"]:
+        lines.extend([headline(summary, code=("`", "`"), emphasis=("**", "**")), ""])
 
-    baseline_label = baseline_name or "baseline"
+    baseline_label = summary["baseline"] or "baseline"
     lines.extend(
         [
             "| Subject | Elements | Smallest | vs {} | Fastest round-trip | vs {} | `compas_pb` lossless |".format(baseline_label, baseline_label),
             "|:--|--:|:--|:--|:--|:--|:--|",
         ]
     )
-    lines.extend(table_rows)
+    for entry in summary["subjects"]:
+        lines.append(
+            "| {} | {} | `{}` · {} | {} | `{}` · {} | {} | {} |".format(
+                _markdown_cell(entry["subject"]),
+                _fmt_int(entry["size"]),
+                _markdown_cell(entry["smallest_format"]),
+                _fmt_bytes(entry["smallest_bytes"]),
+                entry["size_comparison"],
+                _markdown_cell(entry["fastest_format"]),
+                _fmt_time(entry["fastest_roundtrip_s"]),
+                entry["time_comparison"],
+                {True: "✅ yes", False: "❌ no", None: "—"}[entry["protobuf_lossless"]],
+            )
+        )
     lines.append("")
     return "\n".join(lines)
 

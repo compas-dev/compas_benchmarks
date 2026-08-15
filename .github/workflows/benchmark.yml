@@ -1,11 +1,12 @@
 name: serialization-benchmark
 
-# Runs the serialization benchmark, puts its executive summary directly on the workflow
-# run page, and uploads the full results (CSV + interactive HTML + encoded samples).
+# Runs the serialization benchmark and publishes its interactive HTML report to GitHub Pages,
+# so the results are read where they are readable instead of flattened into a job summary.
 #
-# PR runs always use the `quick` preset. Their *size* and *losslessness* numbers are
-# deterministic and meaningful; the *timing* numbers are only indicative on a shared runner —
-# use workflow_dispatch (or a dedicated machine) when the exact timings matter.
+# PR runs always use the `quick` preset and upload the report as an artifact — they do not
+# publish, so the site keeps showing `main`. Sizes and losslessness are deterministic; the
+# timings are only indicative on a shared runner — use workflow_dispatch (or a dedicated
+# machine) when the exact timings matter.
 on:
   push:
     branches: [main]
@@ -41,6 +42,9 @@ concurrency:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    env:
+      PRESET: ${{ inputs.preset || 'quick' }}
+      RESULTS_DIR: ${{ github.workspace }}/results
     steps:
       - uses: actions/checkout@v4
 
@@ -78,24 +82,61 @@ jobs:
       - name: Run benchmark (${{ inputs.preset || 'quick' }})
         run: |
           python -m compas_benchmarks.serialization.run \
-            --preset "${{ inputs.preset || 'quick' }}" \
+            --preset "$PRESET" \
             --repeat "${{ inputs.repeat || '5' }}" \
             --formats ${{ inputs.formats || 'json compas_pb' }} \
-            --out "${{ runner.temp }}/serialization-results/baseline_${{ inputs.preset || 'quick' }}.csv"
+            --out "$RESULTS_DIR/baseline_$PRESET.csv"
 
+      - name: Build site
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SOURCE_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          python -m compas_benchmarks.site "$RESULTS_DIR" \
+            --out "${{ runner.temp }}/site" \
+            --run-url "$RUN_URL" \
+            --source-url "$SOURCE_URL"
+
+      # Always downloadable (the only way to see a PR run's report, since PRs do not publish).
       - name: Upload results
         id: upload-results
         uses: actions/upload-artifact@v4
         with:
           name: serialization-benchmark-${{ inputs.preset || 'quick' }}-${{ github.run_number }}
-          # Upload only this run's clean output, kept outside the working tree so local
-          # baselines in results/ can never leak into a CI artifact.
-          path: ${{ runner.temp }}/serialization-results/
+          path: ${{ runner.temp }}/site/
           retention-days: 90
           if-no-files-found: error
 
-      - name: Publish benchmark summary
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ runner.temp }}/site
+
+      - name: Link to the results
         env:
           ARTIFACT_URL: ${{ steps.upload-results.outputs.artifact-url }}
-          RESULTS_CSV: ${{ runner.temp }}/serialization-results/baseline_${{ inputs.preset || 'quick' }}.csv
-        run: python -m compas_benchmarks.serialization.report "$RESULTS_CSV" --artifact-url "$ARTIFACT_URL" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          {
+            echo "### Serialization benchmark (\`$PRESET\`)"
+            echo
+            echo "[Download the interactive HTML report, CSV, and encoded samples]($ARTIFACT_URL)"
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              echo
+              echo "Publishing to GitHub Pages — see the \`deploy\` job for the URL."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: benchmark
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
