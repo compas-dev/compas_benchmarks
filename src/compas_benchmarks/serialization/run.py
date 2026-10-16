@@ -17,9 +17,14 @@ Full PRD corpus (large; slow and memory-hungry)::
 Subset::
 
     python -m compas_benchmarks.serialization.run --subjects mesh pointcloud --formats json
+
+Also measure ``json`` against the ``remove-future`` branch of compas, reported as ``json@py3``::
+
+    python -m compas_benchmarks.serialization.run --variant py3=git:remove-future
 """
 
 import argparse
+import contextlib
 import csv
 import os
 import sys
@@ -32,6 +37,7 @@ from compas_benchmarks.serialization import formats
 from compas_benchmarks.serialization import metrics
 from compas_benchmarks.serialization import report
 from compas_benchmarks.serialization import samples
+from compas_benchmarks.serialization import variants
 
 # Results are written next to where the benchmark is invoked from (the repository root in
 # normal use), never into the installed package.
@@ -224,6 +230,26 @@ def run(subjects, preset, format_names, repeat, seed, progress=True):
     return rows
 
 
+def add_variants(rows, environments, subjects, preset, format_names, repeat, seed, progress=True):
+    """Measure ``format_names`` in each prepared variant environment and merge them into ``rows``.
+
+    Each variant runs in its own environment (see :mod:`variants`); its formats are reported
+    as ``<format>@<variant>`` and slotted in after the main formats of the same batch.
+
+    Returns
+    -------
+    list[dict]
+    """
+    merged = list(rows)
+    for environment in environments:
+        variant_rows = variants.measure(environment, subjects, preset, format_names, repeat, seed, progress=progress)
+        merged += variants.relabel(variant_rows, environment.name, rows)
+
+    order = {subject: index for index, subject in enumerate(subjects)}
+    merged.sort(key=lambda row: (order[row["subject"]], int(row["size"])))
+    return merged
+
+
 def print_table(rows):
     header = "{:<12} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>10} {:>8}".format("subject", "size", "format", "size", "dump_s", "load_s", "trip_s", "peak", "lossless")
     print(header)
@@ -264,12 +290,33 @@ def main():
     parser.add_argument("--out", default=os.path.join(RESULTS_DIR, "baseline_quick.csv"), help="CSV output path.")
     parser.add_argument("--no-samples", action="store_true", help="Skip writing encoded-format samples.")
     parser.add_argument("--quiet", action="store_true", help="Suppress the per-batch progress reported on stderr.")
+    parser.add_argument(
+        "--variant",
+        action="append",
+        default=[],
+        metavar="NAME=SOURCE",
+        help="Also measure --variant-formats against another compas, reported as <format>@NAME. "
+        "SOURCE is git:<ref> of compas-dev/compas or any requirement uv pip accepts. Repeatable; needs uv.",
+    )
+    parser.add_argument("--variant-formats", nargs="+", default=["json"], help="Formats measured against each --variant (default: json).")
     args = parser.parse_args()
 
-    rows = run(args.subjects, args.preset, args.formats, args.repeat, args.seed, progress=not args.quiet)
+    try:
+        specs = [variants.parse(spec) for spec in args.variant]
+    except ValueError as error:
+        parser.error(str(error))
+
+    with contextlib.ExitStack() as stack:
+        # Variants are set up before the baseline runs, so a branch that does not install
+        # fails the run in seconds rather than after the whole benchmark.
+        environments = [stack.enter_context(variants.prepared(spec, progress=not args.quiet)) for spec in specs]
+        rows = run(args.subjects, args.preset, args.formats, args.repeat, args.seed, progress=not args.quiet)
+        rows = add_variants(rows, environments, args.subjects, args.preset, args.variant_formats, args.repeat, args.seed, progress=not args.quiet)
+        variant_descriptions = {environment.name: environment.description for environment in environments}
     print_table(rows)
     out = write_csv(rows, args.out)
     meta = {"preset": args.preset, "repeat": args.repeat, "seed": args.seed, "compas": compas.__version__}
+    meta["variants"] = variant_descriptions
     meta["coverage"] = _coverage()
     html_out = report.write_html(rows, os.path.splitext(out)[0] + ".html", meta=meta)
     print("\nWrote {} rows to {}\nWrote report to {}".format(len(rows), out, html_out))

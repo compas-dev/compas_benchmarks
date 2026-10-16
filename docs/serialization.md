@@ -121,6 +121,9 @@ Inputs (**Actions → serialization-benchmark → Run workflow**) let you pick t
 `repeat` count, the `formats`, and the versions of the subjects under test: `compas_ref` and
 `compas_pb_ref` each take either a PyPI specifier (`==2.15.1`) or a git ref (`git:main`,
 `git:some-branch`) — compas_pb commits its generated `_pb2` modules, so no protoc is needed.
+`compas_variants` (default `py3=git:remove-future`) adds formats measured against other
+compas versions in their own environments, reported as `json@<name>` — see "Comparing compas
+versions in one report" in the [README](../README.md).
 
 Pushes to `main` and pull requests run the `quick` preset automatically. Their **size** and
 **losslessness** numbers are deterministic and meaningful; the **timing** numbers are only

@@ -30,6 +30,9 @@ on:
       formats:
         description: "formats to benchmark (json, json_zip, compas_pb, compas_pb_zip, compas_pb_zstd, compas_msgpack, compas_msgpack_zstd)"
         default: "json compas_pb"
+      compas_variants:
+        description: "other compas versions to also measure json against, as NAME=git:<ref> or NAME=<requirement>, space-separated; 'none' to skip"
+        default: "py3=git:remove-future"
 
 permissions:
   contents: read
@@ -83,12 +86,21 @@ jobs:
         run: |
           uv run python -c "import compas, compas_pb, msgspec, zstandard; print('compas', compas.__version__); print('compas_pb', compas_pb.__version__)"
 
+      # Each compas variant (e.g. py3 = the remove-future branch) is measured in its own
+      # environment and reported as json@<name> in the same report; see serialization/variants.py.
       - name: Run benchmark (${{ inputs.preset || 'quick' }})
+        env:
+          COMPAS_VARIANTS: ${{ inputs.compas_variants || 'py3=git:remove-future' }}
         run: |
+          variant_args=()
+          if [ "$COMPAS_VARIANTS" != "none" ]; then
+            for variant in $COMPAS_VARIANTS; do variant_args+=(--variant "$variant"); done
+          fi
           uv run python -m compas_benchmarks.serialization.run \
             --preset "$PRESET" \
             --repeat "${{ inputs.repeat || '5' }}" \
             --formats ${{ inputs.formats || 'json compas_pb' }} \
+            "${variant_args[@]}" \
             --out "$RESULTS_DIR/baseline_$PRESET.csv"
 
       - name: Build site

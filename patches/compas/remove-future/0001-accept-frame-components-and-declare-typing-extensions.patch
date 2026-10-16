@@ -1,0 +1,211 @@
+From f3c62b2e69257e227e0a82e7e699f5230f596e2e Mon Sep 17 00:00:00 2001
+From: Gonzalo Casas <casas@arch.ethz.ch>
+Date: Fri, 16 Oct 2026 22:36:47 +0200
+Subject: [PATCH] Accept frame components on Curve and Surface; declare
+ typing_extensions
+
+`Curve.frame` and `Surface.frame` raised `TypeError` for anything but a
+`Frame`, unlike `Shape.frame` and the released 2.x setters, which accept
+the frame's components (point, xaxis, yaxis). compas_pb's deserializers
+rely on that form to avoid allocating an intermediate Frame, so arcs,
+circles, ellipses, hyperbolas and parabolas no longer round-tripped
+through protobuf. Both setters accept either form again; a Frame is
+still copied.
+
+The package also imports `typing_extensions.Self` throughout but did not
+declare the dependency, so a fresh install failed on `import compas`.
+It is now listed, and the dynamic-dependency entries pointing at the
+removed requirements files are dropped.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ pyproject.toml                          |  3 +--
+ src/compas/geometry/curves/curve.py     | 14 ++++++++-----
+ src/compas/geometry/surfaces/surface.py | 15 ++++++++-----
+ tests/compas/geometry/test_curves.py    | 28 ++++++++++++++++++++-----
+ tests/compas/geometry/test_surfaces.py  | 12 +++++++++--
+ 5 files changed, 53 insertions(+), 19 deletions(-)
+
+diff --git a/pyproject.toml b/pyproject.toml
+index c5c3c13efcb..ea87e2f8ceb 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -33,6 +33,7 @@ dependencies = [
+     "networkx >= 3.0",
+     "numpy >= 1.15.4",
+     "scipy >= 1.1",
++    "typing_extensions >= 4.0",
+     "watchdog; sys_platform != 'emscripten'",
+ ]
+ 
+@@ -92,8 +93,6 @@ zip-safe = false
+ 
+ [tool.setuptools.dynamic]
+ version = { attr = "compas.__version__" }
+-dependencies = { file = "requirements.txt" }
+-optional-dependencies = { dev = { file = "requirements-dev.txt" } }
+ 
+ [tool.setuptools.packages.find]
+ where = ["src"]
+diff --git a/src/compas/geometry/curves/curve.py b/src/compas/geometry/curves/curve.py
+index 143e8c40ac7..ad377b99c7d 100644
+--- a/src/compas/geometry/curves/curve.py
++++ b/src/compas/geometry/curves/curve.py
+@@ -2,6 +2,7 @@ from math import isfinite
+ from typing import TYPE_CHECKING
+ from typing import Literal
+ from typing import Optional
++from typing import Sequence
+ from typing import TypeVar
+ from typing import Union
+ from typing import overload
+@@ -92,7 +93,7 @@ class Curve(Geometry):
+         Notes
+         -----
+         If no frame is assigned, the world XY frame is created on first access.
+-        Assigning a frame creates an independent `Frame`.
++        Assigning a frame, or its components (point, xaxis, yaxis), creates an independent `Frame`.
+         Assigning `None` restores the default world XY frame.
+ 
+         Examples
+@@ -112,13 +113,16 @@ class Curve(Geometry):
+         return self._frame
+ 
+     @frame.setter
+-    def frame(self, frame: Optional[Frame]) -> None:
++    def frame(self, frame: Optional[Union[Frame, Sequence[CoordinateType]]]) -> None:
+         if frame is None:
+             self._frame = None
+-        else:
+-            if not isinstance(frame, Frame):
+-                raise TypeError("The frame must be a Frame object or None.")
++        elif isinstance(frame, Frame):
+             self._frame = Frame(frame.point, frame.xaxis, frame.yaxis)
++        else:
++            # Like `Shape.frame`, also accept the frame's components (point, xaxis, yaxis), so
++            # deserializers can build the geometry without allocating an intermediate Frame.
++            point, xaxis, yaxis = frame
++            self._frame = Frame(point, xaxis, yaxis)
+ 
+     @property
+     def transformation(self) -> Transformation:
+diff --git a/src/compas/geometry/surfaces/surface.py b/src/compas/geometry/surfaces/surface.py
+index 938b40eab60..5613139d18c 100644
+--- a/src/compas/geometry/surfaces/surface.py
++++ b/src/compas/geometry/surfaces/surface.py
+@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
+ from typing import Iterator
+ from typing import Literal
+ from typing import Optional
++from typing import Sequence
+ from typing import TypeVar
+ from typing import Union
+ from typing import overload
+@@ -77,7 +78,8 @@ class Surface(Geometry):
+ 
+         Notes
+         -----
+-        Assigning a `Frame` creates an independent copy. Assigning `None`
++        Assigning a `Frame`, or its components (point, xaxis, yaxis), creates an
++        independent `Frame`. Assigning `None`
+         resets the frame to world XY on the next access.
+ 
+         """
+@@ -86,13 +88,16 @@ class Surface(Geometry):
+         return self._frame
+ 
+     @frame.setter
+-    def frame(self, frame: Optional[Frame]) -> None:
++    def frame(self, frame: Optional[Union[Frame, Sequence[CoordinateType]]]) -> None:
+         if frame is None:
+             self._frame = None
+-        else:
+-            if not isinstance(frame, Frame):
+-                raise TypeError("The frame must be a Frame object or None.")
++        elif isinstance(frame, Frame):
+             self._frame = Frame(frame.point, frame.xaxis, frame.yaxis)
++        else:
++            # Like `Shape.frame`, also accept the frame's components (point, xaxis, yaxis), so
++            # deserializers can build the geometry without allocating an intermediate Frame.
++            point, xaxis, yaxis = frame
++            self._frame = Frame(point, xaxis, yaxis)
+ 
+     @property
+     def transformation(self) -> Transformation:
+diff --git a/tests/compas/geometry/test_curves.py b/tests/compas/geometry/test_curves.py
+index 664adb487b7..04585c1a16c 100644
+--- a/tests/compas/geometry/test_curves.py
++++ b/tests/compas/geometry/test_curves.py
+@@ -84,15 +84,33 @@ def test_unbounded_curve_discretization_requires_finite_domain(curve):
+     assert all(math.isfinite(coordinate) for point in points for coordinate in point)
+ 
+ 
+-def test_curve_frame_requires_frame_object():
+-    representation = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
++def test_curve_frame_accepts_frame_components():
++    components = ([0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0])
+ 
+-    with pytest.raises(TypeError):
+-        Circle(radius=1.0, frame=representation)  # type: ignore[arg-type]
++    circle = Circle(radius=1.0, frame=components)
++    assert isinstance(circle.frame, Frame)
++    assert circle.frame == Frame.worldYZ()
+ 
+     circle = Circle(radius=1.0)
++    circle.frame = components
++    assert circle.frame == Frame.worldYZ()
++
++
++def test_curve_frame_copies_frame_object():
++    source = Frame.worldYZ()
++    circle = Circle(radius=1.0, frame=source)
++
++    assert circle.frame == source
++    assert circle.frame is not source
++
++
++def test_curve_frame_rejects_invalid_input():
+     with pytest.raises(TypeError):
+-        circle.frame = representation  # type: ignore[assignment]
++        Circle(radius=1.0, frame=1.0)  # type: ignore[arg-type]
++
++    circle = Circle(radius=1.0)
++    with pytest.raises(ValueError):
++        circle.frame = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]  # type: ignore[assignment]
+ 
+ 
+ def test_curve_transformation_reflects_frame_mutation():
+diff --git a/tests/compas/geometry/test_surfaces.py b/tests/compas/geometry/test_surfaces.py
+index 46b4a020429..8d9558e4f66 100644
+--- a/tests/compas/geometry/test_surfaces.py
++++ b/tests/compas/geometry/test_surfaces.py
+@@ -63,7 +63,7 @@ def test_surface_geometry(surface):
+     )
+ 
+ 
+-def test_surface_frame_is_copied_and_requires_frame_object():
++def test_surface_frame_is_copied():
+     source = Frame.worldYZ()
+     surface = PlanarSurface(frame=source)
+ 
+@@ -73,8 +73,16 @@ def test_surface_frame_is_copied_and_requires_frame_object():
+     source.point = [10.0, 0.0, 0.0]
+     assert surface.frame.point == [0.0, 0.0, 0.0]
+ 
++
++def test_surface_frame_accepts_frame_components():
++    surface = PlanarSurface()
++    surface.frame = ([0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0])
++
++    assert isinstance(surface.frame, Frame)
++    assert surface.frame == Frame.worldYZ()
++
+     with pytest.raises(TypeError):
+-        surface.frame = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]  # type: ignore[assignment]
++        surface.frame = 1.0  # type: ignore[assignment]
+ 
+ 
+ def test_surface_transformation_reflects_direct_frame_mutation():
+-- 
+2.50.1 (Apple Git-155)
+

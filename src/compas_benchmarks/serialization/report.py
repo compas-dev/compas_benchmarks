@@ -379,6 +379,8 @@ def build_html(rows, meta=None):
     for key in ("preset", "repeat", "seed", "compas"):
         if key in meta:
             meta_bits.append("{} {}".format(key, meta[key]))
+    for name, description in (meta.get("variants") or {}).items():
+        meta_bits.append("@{}: {}".format(name, description))
 
     controls = (
         '<div class="controls"><span class="controls-label">Show formats</span>'
