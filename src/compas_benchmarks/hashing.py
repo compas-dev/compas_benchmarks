@@ -51,18 +51,23 @@ def canonical_hash(obj, as_string=False):
     """
     from compas.data import DataEncoder
 
+    options = {"cls": DataEncoder, "sort_keys": True, "separators": (",", ":")}
+
+    # Released COMPAS toggles minimal encoding through a class attribute;
+    # newer versions take it as an encoder option instead.
+    if not hasattr(DataEncoder, "minimal"):
+        return _digest(json.dumps(obj.__jsondump__(minimal=True), minimal=True, **options), as_string)
+
     previous = DataEncoder.minimal
     DataEncoder.minimal = True
     try:
-        canonical = json.dumps(
-            obj.__jsondump__(minimal=True),
-            cls=DataEncoder,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        canonical = json.dumps(obj.__jsondump__(minimal=True), **options)
     finally:
         DataEncoder.minimal = previous
+    return _digest(canonical, as_string)
 
+
+def _digest(canonical, as_string):
     h = hashlib.sha256()
     h.update(canonical.encode())
     if as_string:
