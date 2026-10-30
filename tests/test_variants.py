@@ -31,7 +31,7 @@ def test_patches_for_finds_a_refs_patches_in_order(tmp_path):
 
 
 def test_the_remove_future_branch_carries_its_fix():
-    assert [p.split("/")[-1] for p in variants.patches_for("remove-future")] == ["0001-accept-frame-components-and-declare-typing-extensions.patch"]
+    assert [p.split("/")[-1] for p in variants.patches_for("remove-future")] == ["0001-accept-frame-components.patch"]
 
 
 @pytest.mark.parametrize("spec", ["py3", "=git:main", "py3=", "a@b=git:main"])

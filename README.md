@@ -77,9 +77,8 @@ does not install fails the run immediately; the report header records which comp
 A branch under test may need fixes that have not landed on it yet. Patches in
 `patches/compas/<ref>/*.patch` are applied, in name order, to a `git:<ref>` variant before it
 is installed. A patch the branch already contains is skipped (and reported as deletable), so
-it can stay until the branch catches up. `remove-future` currently carries one: the
-`typing_extensions` dependency, and `Curve.frame` / `Surface.frame` accepting frame components
-again, which `compas_pb` relies on. Create one with `git format-patch` in a compas checkout.
+it can stay until the branch catches up. `remove-future` currently carries one:
+`Curve.frame` / `Surface.frame` accepting frame components again, which `compas_pb` relies on. Create one with `git format-patch` in a compas checkout.
 
 CI measures `py3=git:remove-future` on every run; the `compas_variants` input changes the list
 (space-separated, or `none`).

@@ -1,65 +1,33 @@
-From f3c62b2e69257e227e0a82e7e699f5230f596e2e Mon Sep 17 00:00:00 2001
+From 5360abd874b57ae46244c7d8044895fca36ce5d8 Mon Sep 17 00:00:00 2001
 From: Gonzalo Casas <casas@arch.ethz.ch>
 Date: Fri, 16 Oct 2026 22:36:47 +0200
-Subject: [PATCH] Accept frame components on Curve and Surface; declare
- typing_extensions
+Subject: [PATCH] Accept frame components on Curve and Surface
 
-`Curve.frame` and `Surface.frame` raised `TypeError` for anything but a
-`Frame`, unlike `Shape.frame` and the released 2.x setters, which accept
-the frame's components (point, xaxis, yaxis). compas_pb's deserializers
-rely on that form to avoid allocating an intermediate Frame, so arcs,
-circles, ellipses, hyperbolas and parabolas no longer round-tripped
-through protobuf. Both setters accept either form again; a Frame is
-still copied.
-
-The package also imports `typing_extensions.Self` throughout but did not
-declare the dependency, so a fresh install failed on `import compas`.
-It is now listed, and the dynamic-dependency entries pointing at the
-removed requirements files are dropped.
+`Curve.frame` and `Surface.frame` only accepted a `Frame`, unlike the
+released 2.x setters, which also accept the frame's components (point,
+xaxis, yaxis). compas_pb's deserializers rely on that form to avoid
+allocating an intermediate Frame, so arcs, circles, ellipses, hyperbolas
+and parabolas no longer round-tripped through protobuf. Both setters
+accept either form again; a Frame is still copied.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
- pyproject.toml                          |  3 +--
- src/compas/geometry/curves/curve.py     | 14 ++++++++-----
- src/compas/geometry/surfaces/surface.py | 15 ++++++++-----
+ src/compas/geometry/curves/curve.py     | 12 ++++++++---
+ src/compas/geometry/surfaces/surface.py | 15 +++++++++----
  tests/compas/geometry/test_curves.py    | 28 ++++++++++++++++++++-----
  tests/compas/geometry/test_surfaces.py  | 12 +++++++++--
- 5 files changed, 53 insertions(+), 19 deletions(-)
+ 4 files changed, 53 insertions(+), 14 deletions(-)
 
-diff --git a/pyproject.toml b/pyproject.toml
-index c5c3c13efcb..ea87e2f8ceb 100644
---- a/pyproject.toml
-+++ b/pyproject.toml
-@@ -33,6 +33,7 @@ dependencies = [
-     "networkx >= 3.0",
-     "numpy >= 1.15.4",
-     "scipy >= 1.1",
-+    "typing_extensions >= 4.0",
-     "watchdog; sys_platform != 'emscripten'",
- ]
- 
-@@ -92,8 +93,6 @@ zip-safe = false
- 
- [tool.setuptools.dynamic]
- version = { attr = "compas.__version__" }
--dependencies = { file = "requirements.txt" }
--optional-dependencies = { dev = { file = "requirements-dev.txt" } }
- 
- [tool.setuptools.packages.find]
- where = ["src"]
 diff --git a/src/compas/geometry/curves/curve.py b/src/compas/geometry/curves/curve.py
-index 143e8c40ac7..ad377b99c7d 100644
+index 376b94facc6..0b901d053b1 100644
 --- a/src/compas/geometry/curves/curve.py
 +++ b/src/compas/geometry/curves/curve.py
-@@ -2,6 +2,7 @@ from math import isfinite
+@@ -1,3 +1,4 @@
++from collections.abc import Sequence
+ from math import isfinite
  from typing import TYPE_CHECKING
  from typing import Literal
- from typing import Optional
-+from typing import Sequence
- from typing import TypeVar
- from typing import Union
- from typing import overload
-@@ -92,7 +93,7 @@ class Curve(Geometry):
+@@ -89,7 +90,7 @@ class Curve(Geometry):
          Notes
          -----
          If no frame is assigned, the world XY frame is created on first access.
@@ -68,70 +36,66 @@ index 143e8c40ac7..ad377b99c7d 100644
          Assigning `None` restores the default world XY frame.
  
          Examples
-@@ -112,13 +113,16 @@ class Curve(Geometry):
+@@ -109,11 +110,16 @@ class Curve(Geometry):
          return self._frame
  
      @frame.setter
--    def frame(self, frame: Optional[Frame]) -> None:
-+    def frame(self, frame: Optional[Union[Frame, Sequence[CoordinateType]]]) -> None:
+-    def frame(self, frame: Frame | None) -> None:
++    def frame(self, frame: Frame | Sequence[CoordinateType] | None) -> None:
          if frame is None:
              self._frame = None
 -        else:
--            if not isinstance(frame, Frame):
--                raise TypeError("The frame must be a Frame object or None.")
 +        elif isinstance(frame, Frame):
-             self._frame = Frame(frame.point, frame.xaxis, frame.yaxis)
+             self._frame = frame.copy(cls=Frame)
 +        else:
-+            # Like `Shape.frame`, also accept the frame's components (point, xaxis, yaxis), so
-+            # deserializers can build the geometry without allocating an intermediate Frame.
++            # Also accept the frame's components (point, xaxis, yaxis), so deserializers
++            # can build the geometry without allocating an intermediate Frame.
 +            point, xaxis, yaxis = frame
 +            self._frame = Frame(point, xaxis, yaxis)
  
      @property
      def transformation(self) -> Transformation:
 diff --git a/src/compas/geometry/surfaces/surface.py b/src/compas/geometry/surfaces/surface.py
-index 938b40eab60..5613139d18c 100644
+index b585fdaa0ad..ffb4490b8cd 100644
 --- a/src/compas/geometry/surfaces/surface.py
 +++ b/src/compas/geometry/surfaces/surface.py
-@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
- from typing import Iterator
- from typing import Literal
- from typing import Optional
-+from typing import Sequence
- from typing import TypeVar
- from typing import Union
- from typing import overload
-@@ -77,7 +78,8 @@ class Surface(Geometry):
+@@ -1,4 +1,5 @@
+ from collections.abc import Iterator
++from collections.abc import Sequence
+ from itertools import product
+ from math import isfinite
+ from typing import TYPE_CHECKING
+@@ -91,8 +92,9 @@ class Surface(Geometry):
  
          Notes
          -----
 -        Assigning a `Frame` creates an independent copy. Assigning `None`
+-        resets the frame to world XY on the next access.
 +        Assigning a `Frame`, or its components (point, xaxis, yaxis), creates an
-+        independent `Frame`. Assigning `None`
-         resets the frame to world XY on the next access.
++        independent `Frame`. Assigning `None` resets the frame to world XY on
++        the next access.
  
          """
-@@ -86,13 +88,16 @@ class Surface(Geometry):
+         if self._frame is None:
+@@ -100,11 +102,16 @@ class Surface(Geometry):
          return self._frame
  
      @frame.setter
--    def frame(self, frame: Optional[Frame]) -> None:
-+    def frame(self, frame: Optional[Union[Frame, Sequence[CoordinateType]]]) -> None:
+-    def frame(self, frame: Frame | None) -> None:
++    def frame(self, frame: Frame | Sequence[CoordinateType] | None) -> None:
          if frame is None:
              self._frame = None
 -        else:
--            if not isinstance(frame, Frame):
--                raise TypeError("The frame must be a Frame object or None.")
 +        elif isinstance(frame, Frame):
-             self._frame = Frame(frame.point, frame.xaxis, frame.yaxis)
+             self._frame = frame.copy(cls=Frame)
 +        else:
-+            # Like `Shape.frame`, also accept the frame's components (point, xaxis, yaxis), so
-+            # deserializers can build the geometry without allocating an intermediate Frame.
++            # Also accept the frame's components (point, xaxis, yaxis), so deserializers
++            # can build the geometry without allocating an intermediate Frame.
 +            point, xaxis, yaxis = frame
 +            self._frame = Frame(point, xaxis, yaxis)
+         self._invalidate_placement()
  
      @property
-     def transformation(self) -> Transformation:
 diff --git a/tests/compas/geometry/test_curves.py b/tests/compas/geometry/test_curves.py
 index 664adb487b7..04585c1a16c 100644
 --- a/tests/compas/geometry/test_curves.py
@@ -176,7 +140,7 @@ index 664adb487b7..04585c1a16c 100644
  
  def test_curve_transformation_reflects_frame_mutation():
 diff --git a/tests/compas/geometry/test_surfaces.py b/tests/compas/geometry/test_surfaces.py
-index 46b4a020429..8d9558e4f66 100644
+index 1b77f1a749c..6b606bb9489 100644
 --- a/tests/compas/geometry/test_surfaces.py
 +++ b/tests/compas/geometry/test_surfaces.py
 @@ -63,7 +63,7 @@ def test_surface_geometry(surface):
