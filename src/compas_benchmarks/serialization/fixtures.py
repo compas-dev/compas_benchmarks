@@ -168,7 +168,7 @@ def _make_primitive(kind, rng):
         f = Frame(coord(), [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         return Box(rng.uniform(1.0, 10.0), rng.uniform(1.0, 10.0), rng.uniform(1.0, 10.0), frame=f)
     if kind == "sphere":
-        return Sphere(rng.uniform(1.0, 10.0), point=Point(*coord()))
+        return Sphere(rng.uniform(1.0, 10.0), frame=Frame(coord(), [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]))
     if kind == "circle":
         f = Frame(coord(), [1.0, 0.0, 0.0], [0.0, 1.0, 0.0])
         return Circle(rng.uniform(1.0, 10.0), frame=f)
@@ -180,7 +180,7 @@ def _make_primitive(kind, rng):
     if kind == "bezier":
         return Bezier([coord() for _ in range(4)])
     if kind == "polyhedron":
-        return Polyhedron([coord() for _ in range(4)], [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
+        return Polyhedron([coord() for _ in range(4)], [[0, 1, 2], [0, 3, 1], [0, 2, 3], [1, 3, 2]])
     if kind == "transformation":
         return Transformation.from_frame(frame())
     # Conics
